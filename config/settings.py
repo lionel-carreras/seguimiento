@@ -1,6 +1,5 @@
 """
 Django settings for config project.
-
 """
 from pathlib import Path
 import os
