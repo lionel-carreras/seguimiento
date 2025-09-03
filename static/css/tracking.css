@@ -1,0 +1,104 @@
+/* Dots más chicos solo en pantallas chicas */
+@media (max-width: 576px) {
+  .trk-steps.responsive {
+    --dot: 32px;
+    --dot-border: 2px;
+  }
+  .trk-steps.responsive .trk-dot {
+    width: var(--dot);
+    height: var(--dot);
+    border-width: var(--dot-border);
+    font-size: 0.9rem;
+  }
+  .trk-steps.responsive::before {
+    top: calc(var(--dot) / 2);
+  }
+  .trk-steps.responsive .trk-step h6 { font-size: .9rem; }
+  .trk-steps.responsive .trk-step small { font-size: .75rem; }
+}
+
+/* --- Línea superior (paso a paso horizontal) --- */
+.trk-steps {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin: 3rem 0 2rem;
+}
+.trk-steps::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: 0; right: 0;
+  height: 3px;
+  background: #0a6847;
+  z-index: 0;
+}
+.trk-step {
+  text-align: center;
+  width: 25%;
+  position: relative;
+  z-index: 1;
+}
+.trk-step .trk-dot {
+  width: 48px; height: 48px;
+  border: 3px solid #00c479;;
+  border-radius: 50%;
+  background: #fff;
+  margin: 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25rem; color: #0a6847;
+}
+.trk-step.done .trk-dot { background: #00c479;; color: #fff; }
+.trk-step h6, .trk-step small { margin: .5rem 0 0; }
+
+/* --- Timeline vertical “paso a paso del envío” --- */
+.trk-timeline { border-left: 2px solid #0a6847; margin-left: 24px; }
+.trk-item { position: relative; padding-left: 2.5rem; padding-bottom: 2rem; }
+.trk-item:last-child { padding-bottom: 0; }
+.trk-item::before {
+  content: ""; position: absolute; left: -15px; top: 6px;
+  width: 28px; height: 28px;
+  border: 3px solid #00c479;; border-radius: 50%; background: #fff;
+}
+.trk-item.done::before { background: #00c479; }
+.trk-item .trk-badge { font-weight: 700; }
+
+/* Navbar Brio: sin fondo, sólo sombreado inferior */
+.navbar-brio{
+  background-color:#fff !important;
+  border-bottom: 2px solid rgba(0,196,121,.35); /* línea sutil con tu verde */
+  box-shadow: 0 8px 14px -10px rgba(0,196,121,.45); /* sombreado inferior */
+}
+
+/* Colores de texto/links en modo "light" */
+.navbar-brio .navbar-brand,
+.navbar-brio .nav-link{
+  color: #0a6847;           /* verde oscuro legible */
+  font-weight: 500;
+}
+.navbar-brio .nav-link:hover,
+.navbar-brio .nav-link:focus{
+  color: #00c479;           /* tu verde principal al hover */
+  text-decoration: underline;
+}
+
+/* Toggler (hamburguesa) con borde y color visible en fondo claro */
+.navbar-brio .navbar-toggler{
+  border-color: rgba(10,104,71,.35);
+}
+.navbar-brio .navbar-toggler-icon{
+  /* colorea el ícono default (svg base64) para que se vea */
+  filter: invert(37%) sepia(14%) saturate(1325%) hue-rotate(106deg) brightness(91%) contrast(88%);
+}
+
+/* Íconos redes */
+.navbar-brio .nav-social{
+  color: #0a6847;
+  text-decoration: none;
+}
+.navbar-brio .nav-social:hover{ color:#00c479; }
+
+.footer-brio{
+
+    background-color: rgb(196, 196, 190);
+}

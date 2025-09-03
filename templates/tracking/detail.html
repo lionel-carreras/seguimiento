@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Tracking{% endblock %}
+
+{% block extra_head %}
+
+{% endblock %}
+
+{% block content %}
+
+<div class="row align-items-center mb-3">
+  <div class="col-auto">
+    <a href="{% url 'home' %}" class="btn footer-brio btn-outline-secondary btn-sm"><b>⟵  Volver</b></a>
+  </div>
+  <div class="col d-flex justify-content-end">
+    <!-- Botón de instalar PWA -->
+    <button id="btn-install-pwa" class="btn btn-outline-danger btn-sm d-none">
+      <i class="bi bi-download me-1"></i> Instalar app
+    </button>
+  </div>
+</div>
+<br>
+
+
+
+{% if msg %}
+  <div class="alert alert-warning py-2">{{ msg }}</div>
+{% endif %}
+
+{% if envio %}
+
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start flex-wrap">
+        <div>
+          <p class="mb-1 fw-semibold">
+            Número de envío <span class="text-uppercase"> {{ envio.EnvioID }}</span>
+            </p>
+
+            <div>
+            {% if current_step %}
+            <h3 class="fw-bold text-success">{{ current_step.label }}</h3>
+
+
+
+            </div><br>
+
+
+                <small class="text-muted"> Última actualización:  <strong>{{ current_step.when|default:"-" }}</strong></small>
+
+            {% else %}
+            <!-- Fallback por si no hay timeline -->
+            <h3 class="fw-bold">{{ envio.Estado }}</h3>
+            <p class="mb-0 text-muted">
+                Última actualización: <strong>-</strong>
+            </p>
+            {% endif %}
+    </div>
+        </div>
+
+
+      </div>
+
+
+      <!-- PASOS HORIZONTALES -->
+        <div class="trk-steps responsive d-flex justify-content-between mt-4">
+        {% for s in progress_steps %}
+            <div class="trk-step {% if s.done %}done{% endif %}">
+            <div class="trk-dot"><i class="bi bi-check"></i></div>
+            <h6 class="fw-semibold">{{ s.title }}</h6>
+
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+  </div><br><br>
+
+   <!-- PASOS VERTICALES -->
+    <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start flex-wrap">
+        <div>
+
+      <h5 class="fw-semibold mb-3">Detalles de tu envío</h5>
+        <div class="trk-timeline ps-1">
+        {% for step in timeline %}
+            <div class="trk-item done">
+            <span class="trk-badge {% if forloop.first %}text{% endif %}">{{ step.label }}</span><br>
+            {% if step.when %}<span class="fw-bold">{{ step.when }}</span><br><small class="text-muted">{{step.label2}}</small>{% endif %}
+            {% if step.detail %}<small class="text-muted">{{ step.detail }}</small>{% endif %}
+
+            </div>
+        {% empty %}
+            <div class="text-muted">Sin eventos.</div>
+        {% endfor %}
+        </div>
+    </div>
+      </div>
+    </div>
+    </div>
+
+<br><br><br>
+
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Inicio | Seguimiento Brio{% endblock %}
+{% block content %}
+<div class="text-center">
+<h1 class="h3">Seguimiento en tiempo real</h1>
+<p class="text-muted">Ingresá tu número de envío</p>
+<form class="row g-2 justify-content-center" method="get" action="/tracking/">
+<div class="col-12 col-md-4">
+<input class="form-control" name="q" placeholder="Ej 12232124">
+</div>
+<div class="col-auto"><button class="btn btn-success">Buscar</button></div>
+</form>
+</div><br><br><br><br>
+{% endblock %}
