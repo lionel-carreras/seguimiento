@@ -1,8 +1,13 @@
+# notifications/urls.py
 from django.urls import path
-from . import views
-
+from .push import vapid_public, subscribe
+from .send import send_to_envio
 
 app_name = 'notifications'
+
 urlpatterns = [
-#path('test/', views.send_test, name='test'),
+    path('vapid-public', vapid_public, name='vapid_public'),
+    path('subscribe', subscribe, name='push_subscribe'),
+    path('send', send_to_envio, name='push_send'),
 ]
+

@@ -9,6 +9,49 @@
 <input class="form-control" name="q" placeholder="Ej 12232124">
 </div>
 <div class="col-auto"><button class="btn btn-success">Buscar</button></div>
+
 </form>
+<button id="btn-notify" class="btn btn-outline-danger btn-sm">
+  <i class="bi bi-bell me-1"></i> Recibir notificaciones
+</button>
+
+<script>
+// base64url -> bytes
+function b64uToBytes(b64u){
+  const pad='='.repeat((4-b64u.length%4)%4);
+  const b64=(b64u+pad).replace(/-/g,'+').replace(/_/g,'/');
+  return Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+}
+
+async function enablePush(envioId) {
+  const reg = await navigator.serviceWorker.ready;
+  // VAPID pública del Hub (nuestro endpoint devuelve la que cargaste en Azure)
+  const vapidPub = await (await fetch('/api/push/vapid-public')).text();
+
+  // Pedir permiso
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
+
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: b64uToBytes(vapidPub)
+  });
+
+  // Registrar instalación en el Hub con TAG por envío
+  const r = await fetch('/api/push/subscribe', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ subscription: sub, tags: [`envio:{{ envio.EnvioID }}`] })
+  });
+  const j = await r.json();
+  console.log('subscribe:', j);
+  alert('Notificaciones activadas para este envío');
+}
+
+document.getElementById('btn-notify')?.addEventListener('click', () => {
+  enablePush('{{ envio.EnvioID }}').catch(err => alert('Error activando push: '+err));
+});
+</script>
+
 </div><br><br><br><br>
 {% endblock %}

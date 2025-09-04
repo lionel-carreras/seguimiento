@@ -157,3 +157,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 PWA_APP_NAME = 'Seguimiento Brio'
 PWA_APP_SHORT_NAME = 'Seg-Brio'
 PWA_START_URL = '/'
+
+
+NH_CONNECTION_STRING = os.getenv('NH_CONNECTION_STRING', '')
+NH_HUB = os.getenv('NH_HUB', 'tracking')
+VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')

@@ -88,6 +88,29 @@
     btn.classList.add('d-none');
   });
 })();
+
+
+// helper base64url -> Uint8Array
+function b64uToBytes(b64u){const pad='='.repeat((4-b64u.length%4)%4);
+  const b64=(b64u+pad).replace(/-/g,'+').replace(/_/g,'/');
+  return Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+}
+
+async function enablePush(envioId) {
+  const reg = await navigator.serviceWorker.ready;
+  // Tu backend devuelve la VAPID PUBLIC KEY del hub
+  const vapidPub = await (await fetch('/api/push/vapid-public')).text();
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: b64uToBytes(vapidPub)
+  });
+  // Enviá al server para crear/actualizar la Installation en ANH
+  await fetch('/api/push/subscribe', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ subscription: sub, tags: [`envio:${envioId}`] })
+  });
+  alert('Notificaciones activadas');
+}
 </script>
 
 </body>

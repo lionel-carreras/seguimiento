@@ -127,3 +127,26 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// service-worker.js (agregá esto)
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data.json(); } catch {}
+  const title = data.title || 'Expreso Brio';
+  const options = {
+    body: data.body || data.msg || 'Actualización de tu envío',
+    icon: '/static/img/icon-192.png',
+    badge: '/static/img/icon-192.png',
+    data: { url: data.url || '/tracking/' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/tracking/';
+  event.waitUntil((async () => {
+    const clientsArr = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of clientsArr) { if ('focus' in c) return c.focus(); }
+    return clients.openWindow(url);
+  })());
+});
