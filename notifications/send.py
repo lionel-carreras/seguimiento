@@ -1,26 +1,36 @@
 # notifications/send.py
-import base64, hashlib, hmac, time, urllib.parse, json, requests
+import base64, hashlib, hmac, time, urllib.parse, json
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
 def _parse_cs(cs: str):
-    parts = dict(p.split('=', 1) for p in cs.split(';') if p and '=' in p)
-    ep  = parts['Endpoint'].strip().replace('sb://', 'https://').rstrip('/')
-    kn  = parts['SharedAccessKeyName'].strip()
-    key = base64.b64decode(parts['SharedAccessKey'].strip())
-    ent = parts.get('EntityPath', '').strip()
-    return ep, kn, key, ent
+    try:
+        parts = dict(p.split('=', 1) for p in cs.split(';') if p and '=' in p)
+        ep  = parts['Endpoint'].strip().replace('sb://', 'https://').rstrip('/')
+        kn  = parts['SharedAccessKeyName'].strip()
+        key = base64.b64decode(parts['SharedAccessKey'].strip())
+        ent = parts.get('EntityPath', '').strip()
+        return ep, kn, key, ent
+    except Exception:
+        # No reventar el arranque si algo falta; la vista devolverá 500 coherente.
+        return '', '', b'', ''
 
-def _sas(resource: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
+def _sas_for_hub(ep: str, hub: str, key_name: str, key_bytes: bytes, ttl: int = 600):
+    # Para NH la recomendación es firmar el resource (sr) en minúsculas.
+    sr = f"{ep}/{hub}".lower()
+    sr_enc = urllib.parse.quote(sr, safe='')
     expiry = int(time.time()) + ttl
-    sr_raw = resource.lower()
-    sr_enc = urllib.parse.quote(sr_raw, safe='')
-    sig = base64.b64encode(hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()).decode()
-    return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote(sig)}&se={expiry}&skn={urllib.parse.quote(key_name)}"
-
-
-
+    sig = base64.b64encode(
+        hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()
+    ).decode()
+    token = (
+        f"SharedAccessSignature sr={sr_enc}"
+        f"&sig={urllib.parse.quote(sig)}"
+        f"&se={expiry}"
+        f"&skn={urllib.parse.quote(key_name)}"
+    )
+    return token, sr  # devolvemos el sr firmado solo para debug
 
 @csrf_exempt
 def send_to_envio(request):
@@ -28,7 +38,8 @@ def send_to_envio(request):
         return HttpResponseBadRequest('POST only')
 
     try:
-        data = json.loads(request.body.decode('utf-8') if request.body else '{}')
+        body = request.body.decode('utf-8') if request.body else '{}'
+        data = json.loads(body)
     except Exception:
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -37,19 +48,20 @@ def send_to_envio(request):
     if not envio_id:
         return HttpResponseBadRequest('envio_id requerido')
 
-    # --- SAS / NH ---
-    cs = settings.NH_CONNECTION_STRING
+    cs = getattr(settings, 'NH_CONNECTION_STRING', '')
     ep, key_name, key_bytes, entity = _parse_cs(cs)
-    hub = entity or (getattr(settings, 'NH_HUB', '') or '').strip()
-    if not hub:
-        return HttpResponseBadRequest('Falta EntityPath en connection string o NH_HUB en settings/env')
+    hub = (entity or getattr(settings, 'NH_HUB', '')).strip()
 
-    # ⬇️ ATENCIÓN: el SAS se firma sobre el HUB (…/{hub}), NO sobre /messages
-    hub_resource = f"{ep}/{hub}"
-    sas = _sas(hub_resource, key_name, key_bytes)  # _sas ya hace lowercase + urlencode
+    if not (ep and key_name and key_bytes and hub):
+        return JsonResponse(
+            {"status": 500, "reason": "Misconfiguration",
+             "text": "NH_CONNECTION_STRING o NH_HUB incompletos"},
+            status=500
+        )
 
-    # El POST se hace contra …/{hub}/messages
-    resource = f"{hub_resource}/messages"
+    # sr = <ep>/<hub>  (lo firmado); resource = <ep>/<hub>/messages (la URL de envío)
+    sas, signed_sr = _sas_for_hub(ep, hub, key_name, key_bytes)
+    resource = f"{ep}/{hub}/messages"
 
     headers = {
         "Authorization": sas,
@@ -60,24 +72,22 @@ def send_to_envio(request):
     }
 
     try:
+        import requests  # import aquí evita fallar en el import del módulo si requests no está
         r = requests.post(
             resource,
-            params={"api-version": "2015-01"},
+            params={"api-version": "2015-01"},     # La query NO entra en el sr firmado
             headers=headers,
             data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
             timeout=10,
         )
-    except requests.RequestException as e:
+        return JsonResponse({
+            "status": r.status_code,
+            "reason": r.reason,
+            "text": r.text,
+            "hub": hub,
+            "resource": resource,
+            "signed_sr": signed_sr,
+            "skn": key_name,
+        }, status=r.status_code)
+    except Exception as e:
         return JsonResponse({"status": 502, "reason": "Bad Gateway", "error": repr(e)}, status=502)
-
-    return JsonResponse({
-        "status": r.status_code,
-        "reason": r.reason,
-        "text": r.text,
-        "hub": hub,
-        "resource": resource,
-        "signed_sr": hub_resource.lower(),
-        hub_resource = f"{ep}/{hub}"              # sr (firmado)
-        resource = f"{hub_resource}/messages"     # URL de envío
-        sas = _sas(hub_resource, key_name, key_bytes)# 👈 para depurar si hiciera falta
-    }, status=r.status_code)
