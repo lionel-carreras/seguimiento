@@ -6,18 +6,23 @@ from django.conf import settings
 
 def _parse_cs(cs: str):
     parts = dict(p.split('=', 1) for p in cs.split(';') if p and '=' in p)
-    ep  = parts['Endpoint'].strip().replace('sb://', 'https://').rstrip('/')
+    ep  = parts['Endpoint'].strip().replace('sb://', 'https://').rstrip('/')  # https://<ns>.servicebus.windows.net
     kn  = parts['SharedAccessKeyName'].strip()
-    key = base64.b64decode(parts['SharedAccessKey'].strip())
+    kb  = base64.b64decode(parts['SharedAccessKey'].strip())  # bytes
     ent = parts.get('EntityPath', '').strip()
-    return ep, kn, key, ent
+    return ep, kn, kb, ent
 
-def _sas(resource: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
-    # resource = https://<ns>.servicebus.windows.net/<Hub>   (sin /messages)
-    se = int(time.time()) + ttl
-    sr_enc = urllib.parse.quote_plus(resource)
-    sig = base64.b64encode(hmac.new(key_bytes, f"{sr_enc}\n{se}".encode(), hashlib.sha256).digest()).decode()
-    return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote_plus(sig)}&se={se}&skn={urllib.parse.quote_plus(key_name)}"
+def _sas_for_hub(ep: str, hub: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
+    # SR debe estar en minúsculas y URL-encoded con quote_plus
+    resource = f"{ep}/{hub}"
+    sr_lc_enc = urllib.parse.quote_plus(resource.lower())
+    expiry = int(time.time()) + ttl
+    to_sign = f"{sr_lc_enc}\n{expiry}".encode('utf-8')
+    sig = base64.b64encode(hmac.new(key_bytes, to_sign, hashlib.sha256).digest()).decode()
+    return (
+        "SharedAccessSignature "
+        f"sr={sr_lc_enc}&sig={urllib.parse.quote_plus(sig)}&se={expiry}&skn={urllib.parse.quote_plus(key_name)}"
+    )
 
 @csrf_exempt
 def send_to_envio(request):
@@ -30,7 +35,7 @@ def send_to_envio(request):
         return HttpResponseBadRequest('Invalid JSON')
 
     envio_id = str(data.get('envio_id') or '').strip()
-    payload  = data.get('payload') or {}
+    user_payload = data.get('payload') or {"title": "Actualización", "body": "Tu envío cambió de estado"}
     if not envio_id:
         return HttpResponseBadRequest('envio_id requerido')
 
@@ -38,40 +43,36 @@ def send_to_envio(request):
     ep, key_name, key_bytes, entity = _parse_cs(settings.NH_CONNECTION_STRING)
     hub = entity or (getattr(settings, 'NH_HUB', '') or '').strip()
     if not hub:
-        return HttpResponseBadRequest('Falta EntityPath o NH_HUB')
+        return HttpResponseBadRequest('Falta EntityPath en connection string o NH_HUB en settings/env')
 
-    sr_hub   = f"{ep}/{hub}"                 # lo que se firma
-    url_post = f"{sr_hub}/messages"          # endpoint real para POST
+    # SAS firmado sobre el HUB (no sobre /messages)
+    auth = _sas_for_hub(ep, hub, key_name, key_bytes)
 
-    sas = _sas(sr_hub, key_name, key_bytes)
+    # URL de envío
+    url = f"{ep}/{hub}/messages"
+    params = {"api-version": "2015-01"}
 
-    # Forma que Notification Hubs espera para Browser
+    # CUERPO en formato webpush correcto
     body = {
         "notification": {
-            "title": payload.get("title") or "Actualización",
-            "body":  payload.get("body")  or "Tu envío cambió de estado"
+            "title": str(user_payload.get("title", "")),
+            "body":  str(user_payload.get("body", "")),
         }
+        # si querés, podés añadir "data": {...}
     }
-    body_bytes = json.dumps(body, ensure_ascii=False).encode('utf-8')
 
     headers = {
-        "Authorization": sas,
-        "Content-Type": "application/json",         # <- sin charset
-        "ServiceBusNotification-Format": "browser", # <- browser
+        "Authorization": auth,
+        "Content-Type": "application/json",        # sin charset
+        "ServiceBusNotification-Format": "webpush",
         "ServiceBusNotification-Tags": f"envio:{envio_id}",
-        "x-ms-version": "2015-01",
-        "Accept": "application/json",
-        "Content-Length": str(len(body_bytes)),     # explícito por si acaso
+        # "x-ms-version": "2015-01"  # opcional
     }
 
     try:
-        r = requests.post(
-            url_post,
-            params={"api-version": "2015-01"},
-            headers=headers,
-            data=body_bytes,
-            timeout=15,
-        )
+        r = requests.post(url, params=params, headers=headers,
+                          data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
+                          timeout=15)
     except requests.RequestException as e:
         return JsonResponse({"status": 502, "reason": "Bad Gateway", "error": repr(e)}, status=502)
 
@@ -80,6 +81,6 @@ def send_to_envio(request):
         "reason": r.reason,
         "text": r.text,
         "hub": hub,
-        "resource": url_post,
-        "tracking": {k:v for k,v in r.headers.items() if k.lower().startswith('x-ms') or 'tracking' in k.lower()}
+        "resource_signed_over": f"{ep}/{hub}".lower(),
+        "endpoint_called": f"{url}",
     }, status=r.status_code)
