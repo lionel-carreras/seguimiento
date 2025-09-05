@@ -16,21 +16,28 @@ def _parse_cs(cs: str):
         # No reventar el arranque si algo falta; la vista devolverá 500 coherente.
         return '', '', b'', ''
 
+
 def _sas_for_hub(ep: str, hub: str, key_name: str, key_bytes: bytes, ttl: int = 600):
-    # Para NH la recomendación es firmar el resource (sr) en minúsculas.
-    sr = f"{ep}/{hub}".lower()
-    sr_enc = urllib.parse.quote(sr, safe='')
+    # 1) Recurso base del HUB (sin /messages) en minúsculas
+    resource = f"{ep}/{hub}".lower()
+
+    # 2) URL-encode y LUEGO forzar minúsculas en el encoded (para que %2F -> %2f)
+    sr_enc = urllib.parse.quote_plus(resource).lower()
+
+    # 3) Firmar "<sr-enc>\n<expiry>"
     expiry = int(time.time()) + ttl
-    sig = base64.b64encode(
-        hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()
-    ).decode()
+    to_sign = f"{sr_enc}\n{expiry}".encode("utf-8")
+    sig = base64.b64encode(hmac.new(key_bytes, to_sign, hashlib.sha256).digest()).decode()
+
+    # 4) Token
     token = (
         f"SharedAccessSignature sr={sr_enc}"
-        f"&sig={urllib.parse.quote(sig)}"
+        f"&sig={urllib.parse.quote_plus(sig)}"
         f"&se={expiry}"
-        f"&skn={urllib.parse.quote(key_name)}"
+        f"&skn={urllib.parse.quote_plus(key_name)}"
     )
-    return token, sr  # devolvemos el sr firmado solo para debug
+    return token, resource  # devolvemos el resource “humano” solo para debug
+
 
 @csrf_exempt
 def send_to_envio(request):
