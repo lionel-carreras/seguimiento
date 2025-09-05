@@ -22,6 +22,7 @@ def _sas(resource: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
     return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote(sig)}&se={expiry}&skn={urllib.parse.quote(key_name)}"
 
 
+
 @csrf_exempt
 def send_to_envio(request):
     if request.method != 'POST':
@@ -44,15 +45,17 @@ def send_to_envio(request):
     if not hub:
         return HttpResponseBadRequest('Falta EntityPath en connection string o NH_HUB en settings/env')
 
-    resource = f"{ep}/{hub}/messages"  # ¡sin lower(), sin query!
-    sas = _sas(resource, key_name, key_bytes)
+    # ⬇️ ATENCIÓN: el SAS se firma sobre el HUB (…/{hub}), NO sobre /messages
+    hub_resource = f"{ep}/{hub}"
+    sas = _sas(hub_resource, key_name, key_bytes)  # _sas ya hace lowercase + urlencode
+
+    # El POST se hace contra …/{hub}/messages
+    resource = f"{hub_resource}/messages"
 
     headers = {
         "Authorization": sas,
         "Content-Type": "application/json; charset=utf-8",
-        # Para Web Push el formato correcto es 'webpush'
         "ServiceBusNotification-Format": "webpush",
-        # Enrutamos por tag 'envio:{id}'
         "ServiceBusNotification-Tags": f"envio:{envio_id}",
         "Accept": "application/json",
     }
@@ -60,7 +63,7 @@ def send_to_envio(request):
     try:
         r = requests.post(
             resource,
-            params={"api-version": "2015-01"},  # la query NO entra en el sr
+            params={"api-version": "2015-01"},
             headers=headers,
             data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
             timeout=10,
@@ -68,11 +71,11 @@ def send_to_envio(request):
     except requests.RequestException as e:
         return JsonResponse({"status": 502, "reason": "Bad Gateway", "error": repr(e)}, status=502)
 
-    # Devolvemos lo que diga el hub (201 si ok, 401 si SAS malo, etc.)
     return JsonResponse({
         "status": r.status_code,
         "reason": r.reason,
         "text": r.text,
         "hub": hub,
         "resource": resource,
+        "signed_sr": hub_resource.lower(),  # 👈 para depurar si hiciera falta
     }, status=r.status_code)
