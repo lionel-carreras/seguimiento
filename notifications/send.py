@@ -14,12 +14,11 @@ def _parse_cs(cs: str):
 
 def _sas(resource: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
     expiry = int(time.time()) + ttl
-    sr_lc = resource.lower()                           # 👈 minúsculas
-    sr_enc = urllib.parse.quote(sr_lc, safe='')        # 👈 URL-encode
-    sig = base64.b64encode(
-        hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()
-    ).decode()
+    sr_raw = resource.lower()
+    sr_enc = urllib.parse.quote(sr_raw, safe='')
+    sig = base64.b64encode(hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()).decode()
     return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote(sig)}&se={expiry}&skn={urllib.parse.quote(key_name)}"
+
 
 
 
@@ -77,5 +76,8 @@ def send_to_envio(request):
         "text": r.text,
         "hub": hub,
         "resource": resource,
-        "signed_sr": hub_resource.lower(),  # 👈 para depurar si hiciera falta
+        "signed_sr": hub_resource.lower(),
+        hub_resource = f"{ep}/{hub}"              # sr (firmado)
+        resource = f"{hub_resource}/messages"     # URL de envío
+        sas = _sas(hub_resource, key_name, key_bytes)# 👈 para depurar si hiciera falta
     }, status=r.status_code)
