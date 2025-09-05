@@ -162,3 +162,9 @@ PWA_START_URL = '/'
 NH_CONNECTION_STRING = os.getenv('NH_CONNECTION_STRING', '')
 NH_HUB = os.getenv('NH_HUB', 'tracking')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
+
+Endpoint=sb://seguimiento.servicebus.windows.net/;
+SharedAccessKeyName=sendkey;
+SharedAccessKey=KmfBmfDmyju7SORQ8hxjXZAarfNkpiofnV6rwtJi/cI=;
+EntityPath=ExpresoBrio
+
