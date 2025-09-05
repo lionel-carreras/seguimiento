@@ -9,11 +9,15 @@ def _parse_cs(cs):
     ep = parts['Endpoint'].replace('sb://','https://').rstrip('/')  # https://<ns>.servicebus.windows.net
     return ep, parts['SharedAccessKeyName'], parts['SharedAccessKey']
 
-def _sas(uri, key_name, key, ttl=3600):
+def _sas(uri, key_name, key_base64, ttl=3600):
     expiry = int(time.time()) + ttl
-    to_sign = f"{urllib.parse.quote_plus(uri)}\n{expiry}".encode()
-    sig = base64.b64encode(hmac.new(key.encode(), to_sign, hashlib.sha256).digest()).decode()
-    return f"SharedAccessSignature sr={urllib.parse.quote_plus(uri)}&sig={urllib.parse.quote_plus(sig)}&se={expiry}&skn={key_name}"
+    sr_enc = urllib.parse.quote(uri.lower(), safe='')  # 👈 minúsculas + encode
+    key_bytes = base64.b64decode(key_base64)           # 👈 usar binario
+    sig = base64.b64encode(
+        hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()
+    ).decode()
+    return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote(sig)}&se={expiry}&skn={key_name}"
+
 
 def vapid_public(_):
     return JsonResponse(settings.VAPID_PUBLIC_KEY, safe=False)
