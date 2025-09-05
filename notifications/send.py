@@ -14,9 +14,13 @@ def _parse_cs(cs: str):
 
 def _sas(resource: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
     expiry = int(time.time()) + ttl
-    sr_enc = urllib.parse.quote(resource, safe='')  # OBLIGATORIO: codificar sr
-    sig = base64.b64encode(hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()).decode()
+    sr_lc = resource.lower()                           # 👈 minúsculas
+    sr_enc = urllib.parse.quote(sr_lc, safe='')        # 👈 URL-encode
+    sig = base64.b64encode(
+        hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()
+    ).decode()
     return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote(sig)}&se={expiry}&skn={urllib.parse.quote(key_name)}"
+
 
 @csrf_exempt
 def send_to_envio(request):
