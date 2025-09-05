@@ -1,5 +1,5 @@
 # notifications/send.py
-import base64, hashlib, hmac, time, urllib.parse, json, requests
+import hashlib, hmac, time, urllib.parse, json, requests
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
@@ -8,21 +8,18 @@ def _parse_cs(cs: str):
     parts = dict(p.split('=', 1) for p in cs.split(';') if p and '=' in p)
     ep  = parts['Endpoint'].strip().replace('sb://', 'https://').rstrip('/')
     kn  = parts['SharedAccessKeyName'].strip()
-    key_b64 = parts['SharedAccessKey'].strip()
-    ent = parts.get('EntityPath', '').strip()
-    return ep, kn, key_b64, ent
+    key_raw = parts['SharedAccessKey'].strip()         # *** SIN base64.decode ***
+    ent = (parts.get('EntityPath') or '').strip()
+    return ep, kn, key_raw, ent
 
-def _sas_for_hub(resource_hub: str, key_name: str, key_b64: str, ttl: int = 600) -> str:
-    exp = int(time.time()) + ttl
-    sr_enc = urllib.parse.quote(resource_hub, safe='')  # SR = <ep>/<hub> (SIN /messages)
-    key = base64.b64decode(key_b64)
-    sig = base64.b64encode(hmac.new(key, f"{sr_enc}\n{exp}".encode(), hashlib.sha256).digest()).decode()
-    return (
-        f"SharedAccessSignature sr={sr_enc}"
-        f"&sig={urllib.parse.quote(sig)}"
-        f"&se={exp}"
-        f"&skn={urllib.parse.quote(key_name)}"
+def _sas_for_hub(resource_hub: str, key_name: str, key_raw: str, ttl: int = 600) -> str:
+    exp   = int(time.time()) + ttl
+    sr_enc = urllib.parse.quote(resource_hub, safe='')  # firmamos el HUB (sin /messages)
+    sig   = hmac.new(key_raw.encode('utf-8'), f"{sr_enc}\n{exp}".encode(), hashlib.sha256).digest()
+    sig_b64_enc = urllib.parse.quote(
+        __import__("base64").b64encode(sig).decode("utf-8")
     )
+    return f"SharedAccessSignature sr={sr_enc}&sig={sig_b64_enc}&se={exp}&skn={urllib.parse.quote(key_name)}"
 
 @csrf_exempt
 def send_to_envio(request):
@@ -35,18 +32,18 @@ def send_to_envio(request):
         return HttpResponseBadRequest('Invalid JSON')
 
     envio_id = str(data.get('envio_id') or '').strip()
-    payload = data.get('payload') or {"title": "Actualización", "body": "Tu envío cambió de estado"}
+    payload  = data.get('payload') or {"title":"Actualización","body":"Tu envío cambió de estado"}
     if not envio_id:
         return HttpResponseBadRequest('envio_id requerido')
 
-    ep, key_name, key_b64, entity = _parse_cs(settings.NH_CONNECTION_STRING)
+    ep, key_name, key_raw, entity = _parse_cs(settings.NH_CONNECTION_STRING)
     hub = entity or (getattr(settings, 'NH_HUB', '') or '').strip()
     if not hub:
         return HttpResponseBadRequest('Falta EntityPath en connection string o NH_HUB en settings/env')
 
-    resource_hub = f"{ep}/{hub}"                # SR que se FIRMA
-    resource_msg = f"{resource_hub}/messages"   # Endpoint al que SE ENVÍA
-    sas = _sas_for_hub(resource_hub, key_name, key_b64)
+    resource_hub = f"{ep}/{hub}"                 # SR que firmamos
+    resource_msg = f"{resource_hub}/messages"    # endpoint al que enviamos
+    sas = _sas_for_hub(resource_hub, key_name, key_raw)
 
     headers = {
         "Authorization": sas,
