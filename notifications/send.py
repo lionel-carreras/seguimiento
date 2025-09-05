@@ -1,4 +1,4 @@
-# notifications/send.py  (cambios MÍNIMOS)
+# notifications/send.py
 import base64, hashlib, hmac, time, urllib.parse, json, requests
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
@@ -12,11 +12,9 @@ def _parse_cs(cs: str):
     ent = parts.get('EntityPath', '').strip()
     return ep, kn, key, ent
 
-def _sas(resource_base: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
-    # 👉 el sr debe ser el HUB BASE, lowercased y URL-encoded (sin /messages)
-    sr_raw_lower = resource_base.lower()
-    sr_enc = urllib.parse.quote(sr_raw_lower, safe='')
+def _sas(resource: str, key_name: str, key_bytes: bytes, ttl: int = 600) -> str:
     expiry = int(time.time()) + ttl
+    sr_enc = urllib.parse.quote(resource, safe='')  # OBLIGATORIO: codificar sr
     sig = base64.b64encode(hmac.new(key_bytes, f"{sr_enc}\n{expiry}".encode(), hashlib.sha256).digest()).decode()
     return f"SharedAccessSignature sr={sr_enc}&sig={urllib.parse.quote(sig)}&se={expiry}&skn={urllib.parse.quote(key_name)}"
 
@@ -35,31 +33,30 @@ def send_to_envio(request):
     if not envio_id:
         return HttpResponseBadRequest('envio_id requerido')
 
+    # --- SAS / NH ---
     cs = settings.NH_CONNECTION_STRING
     ep, key_name, key_bytes, entity = _parse_cs(cs)
     hub = entity or (getattr(settings, 'NH_HUB', '') or '').strip()
     if not hub:
         return HttpResponseBadRequest('Falta EntityPath en connection string o NH_HUB en settings/env')
 
-    # 👉 base del hub (para firmar) y URL de envío (para hacer POST)
-    resource_base = f"{ep}/{hub}"               # para el SR del token
-    resource_post = f"{resource_base}/messages" # endpoint real del POST
-
-    sas = _sas(resource_base, key_name, key_bytes)
+    resource = f"{ep}/{hub}/messages"  # ¡sin lower(), sin query!
+    sas = _sas(resource, key_name, key_bytes)
 
     headers = {
         "Authorization": sas,
         "Content-Type": "application/json; charset=utf-8",
+        # Para Web Push el formato correcto es 'webpush'
         "ServiceBusNotification-Format": "webpush",
+        # Enrutamos por tag 'envio:{id}'
         "ServiceBusNotification-Tags": f"envio:{envio_id}",
-        "x-ms-version": "2015-01",
         "Accept": "application/json",
     }
 
     try:
         r = requests.post(
-            resource_post,
-            params={"api-version": "2015-01"},  # la query NO va en el sr
+            resource,
+            params={"api-version": "2015-01"},  # la query NO entra en el sr
             headers=headers,
             data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
             timeout=10,
@@ -67,11 +64,11 @@ def send_to_envio(request):
     except requests.RequestException as e:
         return JsonResponse({"status": 502, "reason": "Bad Gateway", "error": repr(e)}, status=502)
 
+    # Devolvemos lo que diga el hub (201 si ok, 401 si SAS malo, etc.)
     return JsonResponse({
         "status": r.status_code,
         "reason": r.reason,
         "text": r.text,
         "hub": hub,
-        "resource": resource_post,
+        "resource": resource,
     }, status=r.status_code)
-
